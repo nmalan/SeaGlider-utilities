@@ -4,6 +4,8 @@ UAGE:   from SeaGlider_LG import SeaGlider
         sg = SeaGlider(/path/to/folder/)
 
 For more info see help(SeaGlider)
+
+written by Luke Gregor (lukegre@gmail.com)
 """
 
 import re
