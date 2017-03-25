@@ -1,4 +1,4 @@
-# SeaGlider_plotting
+# SeaGlider-plotting
 
 ## Import the data 
 
@@ -17,4 +17,7 @@ The data is automatically interpolated to 1000m using 1m bins. The data is loade
 Simply call a variable (as below) and then plot section. `cmap` and `vlim` are optional arguments as shown in the second plot. The returned object is an axes object and all related methods can be used on these axes (as shown).
 
     sg542.temperature.plot_section()
-    sg542.salinity.data.head(6)  # head is a pd.DataFrame function that shows the first n entries
+	 sg542.eng_wlbb2fl_FL1sig.plot_section(cmap=cm.Spectral_r)
+	  
+![title](images/sst.jpg)
+![title](images/backscatter.jpg)
