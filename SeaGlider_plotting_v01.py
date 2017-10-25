@@ -15,9 +15,10 @@ from netCDF4 import Dataset
 from numpy import array, arange, unique, datetime64, ma, where, nan, ndarray, \
     interp, sort
 from pandas import DataFrame, Series
+import xarray as xr
 
 
-class SeaGlider(object):
+class SeaGlider:
     __doc__ = """
     This is a class that reads in glider data from seaglider *.nc files. This
     is designed to be used interactively.
@@ -60,7 +61,13 @@ class SeaGlider(object):
         self.date_range = array([t0, t1], dtype='datetime64[s]')
 
     def __getitem__(self, key):
-        return getattr(self, key)
+
+        if type(key) == int:
+            fname = self.files[key]
+            nco = xr.open_dataset(fname)
+            return nco
+        else:
+            return getattr(self, key)
 
     def _process_directory_name(self, data_directoy):
         split = os.path.split
@@ -83,7 +90,7 @@ class SeaGlider(object):
         string += "Date range:          {} to {}".format(
             self.date_range[0], self.date_range[1]).replace('T', ' ')
         string += "\n"
-        plot_vars = sort(self.variables.keys()).astype(str)
+        plot_vars = self.variables.keys()
         string += "Plot variables: \n{}".format(plot_vars)
         string += '\n\n'
 
@@ -119,7 +126,7 @@ class SG_var(object):
         from pandas import Series
 
         fname = self.__files__[key]
-        print 'Importing file: {}'.format(fname)
+        print('Importing file: {}'.format(fname))
         nco = Dataset(fname)
         depth = nco.variables['depth'][:]
         var = nco.variables[self.name]
@@ -173,12 +180,14 @@ class SG_var(object):
         data = DataFrame([], index=depth, columns=dives)
 
         for c, fname in enumerate(files):
-            i = c * 2, c * 2 + 1
+            i0, i1 = c * 2, c * 2 + 1
             try:
-                data.iloc[:, i] = self._read_netcdf_var(fname, key)
+                profiles = self._read_netcdf_var(fname, key).T
+                data.iloc[:, i0] = profiles[0]
+                data.iloc[:, i1] = profiles[1]
             except (KeyError, ValueError):
                 data.iloc[:, i] = ndarray([1000, 2]) * nan
-                print "{} doesn't contain {} or has no data".format(fname, key)
+                print("{} doesn't contain {} or has no data".format(fname, key))
 
         return data
 
@@ -215,7 +224,7 @@ class SG_var(object):
             vmin, vmax = percentile(z[~z.mask], [0.5, 99.5])
         else:
             vmin, vmax = vlim
-        dict.has_key
+
         vname = self.name.capitalize()
         units = '({})'.format(
             self.attrs['units']) if 'units' in self.attrs else ''
@@ -234,6 +243,6 @@ class SG_var(object):
 
 
 if __name__ == '__main__':
-    data_dir = '/Users/luke/Desktop/SeaGlider/sg_data/'
-    sg = SeaGlider(data_dir + 'p5420*')
-    print sg
+    data_dir = '/Users/luke/Documents/SeaGliders/Data/Level_0/sg543/2015_SAGE/'
+    sg = SeaGlider(data_dir + 'p5430*')
+    print(sg)
