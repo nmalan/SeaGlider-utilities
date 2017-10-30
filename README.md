@@ -1,4 +1,4 @@
-# SeaGlider-plotting
+# SeaGlider-plotting (outdated - see demo)
 
 ## Import the data 
 
