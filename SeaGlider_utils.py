@@ -1,6 +1,22 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+
+"""
+UAGE:   from SeaGlider_utils import SeaGlider
+        sg = SeaGlider('/path/to/folder/')
+
+For more info see help(SeaGlider)
+
+written by Luke Gregor (lukegre@gmail.com)
+"""
+
+from __future__ import print_function
 from netCDF4 import Dataset
 from pandas import DataFrame, Series
 import numpy as np
+import warnings
+warnings.filterwarnings("ignore", category=FutureWarning)
+warnings.filterwarnings("ignore", category=RuntimeWarning)
 
 
 class SeaGlider:
@@ -19,7 +35,7 @@ class SeaGlider:
 
         # creating dimensions where data is stored
         dims = np.array(list(nc0.dimensions.keys()))
-        dims = dims[[not d.startswith('string') for d in dims]]
+        dims = dims[np.array([not d.startswith('string') for d in dims])]
         self.data = {}
         for key in dims:
             self.data[key] = DataFrame()
@@ -31,7 +47,7 @@ class SeaGlider:
             # dims can be a valid dimension, () or string_n
             if dim:  # catch empty tuples
                 # there are dimensions that are just `string_n` placeholders
-                if dim[0].startswith('string'): # SeaGliderPointVariable
+                if dim[0].startswith('string'):  # SeaGliderPointVariable
                     var_obj = _SeaGliderPointVariable(key, self.files)
                 else:  # SeaGliderDiveVariable
                     dim_df = self.data[dim[0]]
@@ -65,7 +81,6 @@ class SeaGlider:
             return getattr(self, key)
         else:
             return "Indexing with {} does not yet exist".format(key)
-
 
     def _load_multiple_vars(self, keys):
 
@@ -134,7 +149,7 @@ class _SeaGliderDiveVariable:
                 self.__keys__ += k,
         keys = self.__keys__
 
-        missing_keys = [k not in self.__data__ for k in keys]
+        missing_keys = np.array([k not in self.__data__ for k in keys])
 
         # if statement will load the data only if columns are missing
         if any(missing_keys):
@@ -146,7 +161,8 @@ class _SeaGliderDiveVariable:
                 if 'dives' in df:
                     self.__data__.coordinates += 'dives',
             # inplace assignment for the variables
-            for col in df: self.__data__[col] = df[col]
+            for col in df:
+                self.__data__[col] = df[col]
 
         if ('dives' in self.__data__.coordinates) & ('dives' not in self.__keys__):
             self.__keys__ += 'dives',
@@ -175,10 +191,13 @@ class _SeaGliderDiveVariable:
         return string
 
     def _read_nc_files(self, files, keys, dives=True):
-        from tqdm import tnrange, tqdm_notebook
+        try:
+            from tqdm import tnrange as trange
+        except ImportError:
+            from tqdm import trange
 
         data = []
-        for i in tnrange(files.size):
+        for i in trange(files.size):
             fname = files[i]
             nc = Dataset(fname)
             arr = np.r_[[nc.variables[k][:] for k in keys]]
@@ -204,7 +223,7 @@ class _SeaGliderDiveVariable:
                 self.__data__.time_name = time
                 nco = Dataset(reference_file_name)
                 units = nco.variables[time].getncattr('units')
-                df[time] = decode_cf_datetime(df[time], units)
+                df[time] = decode_cf_datetime(df.loc[:, time], units)
                 nco.close()
 
             # INDEXING DIVES IF DEPTH PRESENT
@@ -299,8 +318,10 @@ class _SeaGliderDiveVariable:
         """
         from matplotlib.pyplot import scatter, colorbar, subplots
 
-        if hasattr(self.__data__, 'time_name'):
-            x = self.data.set_index(self.__data__.time_name).index.to_pydatetime()
+        self.load()
+        time = getattr(self.__data__, 'time_name', None)
+        if time is not None:
+            x = self.data.set_index(time).index.to_pydatetime()
         else:
             x = self.data.dives
         y = self.data[self.__data__.depth_name]
@@ -310,6 +331,8 @@ class _SeaGliderDiveVariable:
             kwargs['vmin'] = np.percentile(z[~z.mask], 1)
         if "vmax" not in kwargs:
             kwargs['vmax'] = np.percentile(z[~z.mask], 99)
+        if 'linewidths' not in kwargs:
+            kwargs['linewidths'] = 0
 
         fig, ax = subplots(1, 1, figsize=[11, 4])
 
@@ -355,7 +378,6 @@ class _SeaGliderDiveVariable:
             kwargs['vmax'] = np.percentile(z[~z.mask], 99)
 
         fig, ax = subplots(1, 1, figsize=[11, 4])
-
         im = pcolormesh(x, y, z, **kwargs)
         cb = colorbar(mappable=im, pad=0.02, ax=ax)
         ax.set_xlim(x.min(), x.max())
@@ -371,7 +393,6 @@ class _SeaGliderDiveVariable:
 
         [tick.set_rotation(45) for tick in ax.get_xticklabels()]
         fig.tight_layout()
-
 
         return ax
 
@@ -389,15 +410,16 @@ class _SeaGliderPointVariable:
     @property
     def data(self):
         if self.__data__ is None:
-            df = self._read_nc_files(self.__files__, self.name)
-            self.__data__ = df.astype(float, errors='ignore')
+            self.load()
         return self.__data__
 
     def load(self):
         if self.__data__ is None:
             df = self._read_nc_files(self.__files__, self.name)
-            self.__data__ = df.astype(float, errors='ignore')
-
+            try:
+                self.__data__ = df.astype(float)
+            except ValueError:
+                self.__data__ = df
 
     def __repr__(self):
         string = ""
@@ -422,10 +444,13 @@ class _SeaGliderPointVariable:
         return string
 
     def _read_nc_files(self, files, key):
-        from tqdm import tnrange, tqdm_notebook
+        try:
+            from tqdm import tnrange as trange
+        except ImportError:
+            from tqdm import trange
 
         data = []
-        for i in tnrange(files.size):
+        for i in trange(files.size):
             fname = files[i]
             nc = Dataset(fname)
             arr = nc.variables[key][:].squeeze()
@@ -514,3 +539,6 @@ class processing:
     def despike_running_mean(df):
         pass
 
+
+if __name__ == '__main__':
+    pass
