@@ -191,10 +191,7 @@ class _SeaGliderDiveVariable:
         return string
 
     def _read_nc_files(self, files, keys, dives=True):
-        try:
-            from tqdm import tnrange as trange
-        except ImportError:
-            from tqdm import trange
+        from tqdm import trange
 
         data = []
         for i in trange(files.size):
@@ -444,10 +441,7 @@ class _SeaGliderPointVariable:
         return string
 
     def _read_nc_files(self, files, key):
-        try:
-            from tqdm import tnrange as trange
-        except ImportError:
-            from tqdm import trange
+        from tqdm import trange
 
         data = []
         for i in trange(files.size):
