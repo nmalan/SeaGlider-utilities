@@ -127,7 +127,7 @@ class _SeaGliderDiveVariable:
             coordinates = self.attrs['coordinates'].split()
             self.__keys__ += coordinates
             self.__data__.coordinates = coordinates
-        else:
+        elif not hasattr(self.__data__, 'coordinates'):
             self.__data__.coordinates = []
 
         nco.close()
@@ -143,6 +143,12 @@ class _SeaGliderDiveVariable:
 
         return self.load(return_data=True)
 
+    @property
+    def series(self):
+        df = self.load(return_data=True)
+        df = df.set_index(self.__data__.time_name, drop=False)
+        return df.loc[:, self.name]
+
     def load(self, return_data=False):
         for k in self.__data__.coordinates:
             if k not in self.__keys__:
@@ -154,7 +160,8 @@ class _SeaGliderDiveVariable:
         # if statement will load the data only if columns are missing
         if any(missing_keys):
             missing_keys = np.array(keys)[missing_keys]
-            df = self._read_nc_files(self.__files__, missing_keys)
+            fetch_dives = 'dives' not in self.__data__
+            df = self._read_nc_files(self.__files__, missing_keys, dives=fetch_dives)
             # if variable has coordinates and not yet loaded, will be processed
             if any([k in self.__data__.coordinates for k in missing_keys]):
                 df = self._process_coords(df, self.__files__[0])
@@ -194,7 +201,7 @@ class _SeaGliderDiveVariable:
         from tqdm import trange
 
         data = []
-        for i in trange(files.size):
+        for i in trange(files.size, ncols=80):
             fname = files[i]
             nc = Dataset(fname)
             arr = np.r_[[nc.variables[k][:] for k in keys]]
@@ -215,12 +222,16 @@ class _SeaGliderDiveVariable:
         for col in df.columns:
             # DECODING TIMES IF PRESENT
             if ('time' in col.lower()) | ('_secs' in col.lower()):
-                from xarray.conventions import decode_cf_datetime
                 time = col
                 self.__data__.time_name = time
                 nco = Dataset(reference_file_name)
                 units = nco.variables[time].getncattr('units')
-                df[time] = decode_cf_datetime(df.loc[:, time], units)
+                df[time + '_raw'] = df.loc[:, time].copy()
+                if 'seconds since 1970' in units:
+                    df[time] = df.loc[:, time].astype('datetime64[s]')
+                else:
+                    from xarray.conventions import decode_cf_datetime
+                    df[time] = decode_cf_datetime(df.loc[:, time], units)
                 nco.close()
 
             # INDEXING DIVES IF DEPTH PRESENT
@@ -262,7 +273,7 @@ class _SeaGliderDiveVariable:
         use SeaGliderVariable.bin_depths().
         """
 
-        from pandas import cut
+        from pandas import cut, core
         from scipy.stats import mode
 
         # load the data if this has not been done
@@ -287,7 +298,7 @@ class _SeaGliderDiveVariable:
             extended_bins = np.arange(start, stop, step)
             bins = np.r_[bins, extended_bins]
 
-        labels = (bins[:-1] + bins[1:]) / 2.
+        labels = bins[:-1]
         dives = self.data.dives
         bins = cut(self.data[depth], bins, labels=labels)
 
@@ -301,6 +312,10 @@ class _SeaGliderDiveVariable:
             gridded.columns = self.__data__.loc[grp_idx0, self.__data__.time_name]
         else:
             gridded.columns = self.data.loc[grp_idx0, 'dives']
+
+        if type(gridded.index) == core.indexes.category.CategoricalIndex:
+            index = gridded.index.astype(float)
+            gridded = gridded.set_index(index)
 
         self.__gridded__ = gridded
 
@@ -444,7 +459,7 @@ class _SeaGliderPointVariable:
         from tqdm import trange
 
         data = []
-        for i in trange(files.size):
+        for i in trange(files.size, ncols=80):
             fname = files[i]
             nc = Dataset(fname)
             arr = nc.variables[key][:].squeeze()
@@ -497,13 +512,72 @@ class plotting:
 class processing:
     from seawater import dens as calc_density
 
+    def par_scaling(par_uV, scale_factor_wet_uEm2s, sensor_output_mV):
+        """
+        Do a scaling correction for par with factory calibration coefficients.
+        The factory calibrations are unique for each deployment and should be
+        taken from the calibration file for that deployment.
+
+        INPUT:  par - a pd.Series of PAR with units µV
+                scale_factor_wet_uEm2s - float; unit µE/m2/sec; cal-sheet
+                sensor_output_mV - float; unit mV; cal-sheet
+        OUPUT:  par - pd.Series with units µE/m2/sec
+
+        """
+        sensor_output_uV = sensor_output_mV / 1000.
+
+        par_uEm2s = (par_uV - sensor_output_uV) / scale_factor_wet_uEm2s
+
+        return par_uEm2s
+
+    def par_fill_surface(df, replace_depth=5, curve_max_depth=100):
+        from scipy.optimize import curve_fit
+
+        def fit_exp_curve(ser, replace_depth, curve_max_depth):
+
+            def exp_func(x, a, b):
+                """
+                outputs a, b according to Equation: y(x) = a * exp(b * x)
+                """
+                return a * np.exp(b * x)
+
+            i = (ser.notnull() &
+                 (ser.index < curve_max_depth) &
+                 (ser.index > replace_depth))
+            x, y = ser.loc[i].reset_index().values.T
+            [a, b], _ = curve_fit(exp_func, x, y, p0=(500, -0.03))
+
+            y_hat = a * np.exp(b * ser.index.values)
+
+            j = ((ser.isnull() | (ser.index < replace_depth)) &
+                 (ser.index < curve_max_depth))
+            ser.loc[j] = y_hat[j]
+
+            return ser
+        """
+        Use an exponential fit to replace the surface values of PAR:
+            Equation: y(x) = a * exp(b * x)
+
+        INPUT:  df - a dp.DataFrame indexed by depth
+                   - can also be group item grouped by dive, indexed by depth
+                replace_depth [5] - from replace_depth to surface is replaced
+                curve_depth [100] - the depth from which the curve is fit
+        OUPUT:  a pd.Series with the top values replaced.
+
+        Note that this function is a wrapper around a function
+        that is applied to the gridded dataframe or groups
+        """
+        cols = df.notnull().sum() > 3
+        df_sub = df.loc[:, cols]
+        df_sub = df_sub.apply(fit_exp_curve, args=(replace_depth, curve_max_depth))
+        df.loc[:, cols] = df_sub
+
+        return df
+
     def flr_quenching(chl, ):
         pass
 
     def flr_dark_count(df):
-        pass
-
-    def par_scaling(par, ):
         pass
 
     def par_dark_count(df):
