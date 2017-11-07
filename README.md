@@ -12,3 +12,6 @@ See `demo_SeaGlider_utils.ipynb` on how to use this package
 - **Institutions:** 
 	1. Southern Ocean Carbon Climate Observatory (SOCCO) — Council for Scientific and Industrial Research (CSIR);  
 	2. Department of Oceanography — University of Cape Town. 
+
+## Technical diagram 
+![technical_diagram](SeaGlider%20diagram.png)
