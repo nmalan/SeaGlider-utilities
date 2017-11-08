@@ -206,7 +206,7 @@ class _SeaGliderDiveVariable:
             dives = False
 
         data = []
-        for i in trange(files.size, ncols=80):
+        for i in trange(files.size):
             fname = files[i]
             nc = Dataset(fname)
             if any([k not in nc.variables for k in keys]):
@@ -281,8 +281,7 @@ class _SeaGliderDiveVariable:
         easy access. If you would like to regrid the data to another grid
         use SeaGliderVariable.bin_depths().
         """
-
-        from pandas import cut, core
+        from pandas import cut
         from scipy.stats import mode
 
         # load the data if this has not been done
@@ -324,7 +323,7 @@ class _SeaGliderDiveVariable:
             gridded.columns = data.loc[idx, data.time_name]
             gridded.columns.name = 'surface_time'
 
-        if type(gridded.index) == core.indexes.category.CategoricalIndex:
+        if gridded.index.dtype.name == 'category':
             index = gridded.index.astype(float)
             gridded = gridded.set_index(index)
             gridded.index.name = 'depth_bin_centre'
@@ -473,7 +472,7 @@ class _SeaGliderPointVariable:
         from tqdm import trange
 
         data = []
-        for i in trange(files.size, ncols=80):
+        for i in trange(files.size):
             fname = files[i]
             nc = Dataset(fname)
             arr = nc.variables[key][:].squeeze()
