@@ -3,6 +3,7 @@ This package reads and processes buoyancy glider data from netCDF files.
 
 See `demo_SeaGlider_utils.ipynb` on how to use this package 
 
+You can cite it with DOI: [![DOI](https://zenodo.org/badge/79128204.svg)](https://zenodo.org/badge/latestdoi/79128204)
 
 ## Info
 
