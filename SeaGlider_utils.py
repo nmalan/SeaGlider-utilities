@@ -236,7 +236,7 @@ class _SeaGliderDiveVariable:
                 nco = Dataset(reference_file_name)
                 units = nco.variables[time].getncattr('units')
                 df[time + '_raw'] = df.loc[:, time].copy()
-                if 'seconds since 1950' in units:
+                if 'days since 1950' in units:
                     df[TIME] = df.loc[:, TIME].astype('datetime64[s]')
                 else:
                     from xarray.conventions import decode_cf_datetime
