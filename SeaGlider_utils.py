@@ -238,9 +238,6 @@ class _SeaGliderDiveVariable:
                 df[time + '_raw'] = df.loc[:, time].copy()
                 if 'days since 1950' in units:
                     df[TIME] = df.loc[:, TIME].astype('datetime64[s]')
-                else:
-                    from xarray.conventions import decode_cf_datetime
-                    df[time] = decode_cf_datetime(df.loc[:, time], units)
                 nco.close()
 
             # INDEXING DIVES IF DEPTH PRESENT
