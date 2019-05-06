@@ -230,7 +230,7 @@ class _SeaGliderDiveVariable:
         # TRY TO GET DEPTH AND TIME COORDS AUTOMATICALLY
         for col in df.columns:
             # DECODING TIMES IF PRESENT
-            if ('time' in col.lower()) | ('_secs' in col.lower()):
+            if ('TIME' in col.lower()) | ('_secs' in col.lower()):
                 time = col
                 self.__data__.time_name = time
                 nco = Dataset(reference_file_name)
